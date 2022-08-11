@@ -41,7 +41,7 @@ func _ready():
 
 #	print("ready", _tween.get_signal_list())
 #	_tween.connect("tween_started", _on_tween_started)
-	_tween.connect("finished", _on_tween_completed)
+	_tween.connect("step_finished", _on_tween_completed)
 
 	#
 	# By default Godot runs interpolate_property animation runs only once
@@ -637,14 +637,13 @@ func _maybe_adjust_modulate_value(animation_data: Dictionary, value):
 
 	return value
 
-func _on_tween_completed() -> void:
+func _on_tween_completed(idx: int) -> void:
 #	node.on_completed()
 
 	_tween_completed += 1
 
 	if _tween_completed >= _animation_data.size():
 		_tween.stop()
-#		stop_all()
 
 		emit_signal("animation_completed")
 

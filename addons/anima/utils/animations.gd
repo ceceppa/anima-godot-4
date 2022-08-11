@@ -19,9 +19,12 @@ static func get_available_animations() -> Array:
 		var filtered := []
 
 		for file in list:
-			if file.find('.gd.') < 0 and file.find(".gd") > 0:
+			if file.ends_with('.gdc'):
 				filtered.push_back(file.replace('.gdc', '.gd'))
-
+			elif file.ends_with('.gde'):
+				filtered.push_back(file.replace('.gde', '.gd'))
+			elif file.ends_with('.gd'):
+				filtered.push_back(file)
 		AnimaUI._animations_list = filtered
 
 	return AnimaUI._animations_list + AnimaUI._custom_animations.keys()
