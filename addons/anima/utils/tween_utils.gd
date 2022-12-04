@@ -1,6 +1,6 @@
 class_name AnimaTweenUtils
 
-static func calculate_from_and_to(animation_data: Dictionary, is_backwards_animation: bool) -> Dictionary:
+static func calculate_from_and_to(animation_data: Dictionary) -> Dictionary:
 	var node: Node = animation_data.node
 	var from
 	var to
@@ -13,33 +13,65 @@ static func calculate_from_and_to(animation_data: Dictionary, is_backwards_anima
 	if animation_data.has("to") and animation_data.to == null:
 		animation_data.erase('to')
 
-	if animation_data.has('from'):
-		from = maybe_calculate_value(animation_data.from, animation_data)
-		from = _maybe_convert_from_deg_to_rad(node, animation_data, from)
-	else:
-		from = current_value
+	#
+	# Godot4 doesn't like a meta_key containing the symbol :
+	#
+	var property_name_for_meta = animation_data.property.replace(":", "_")
+	var meta_key = "_initial_relative_value_" + property_name_for_meta
+	var meta_key_last_relative_position = "_last_relative_value_" + property_name_for_meta
+
+	var calculated_from = null
+	
+	if animation_data.has("from"):
+		calculated_from = calculate_dynamic_value(animation_data.from, animation_data)
+		calculated_from = _maybe_convert_from_deg_to_rad(node, animation_data, calculated_from)
+
+	from = _maybe_convert_from_deg_to_rad(node, animation_data, current_value)
+
+	if relative:
+		if not node.has_meta(meta_key_last_relative_position):
+			node.set_meta(meta_key, current_value)
+
+			if calculated_from:
+				from += calculated_from
+		else:
+			var previous_end_position = node.get_meta(meta_key_last_relative_position)
+
+			from = previous_end_position
+	elif calculated_from != null:
+		from = calculated_from
 
 	if animation_data.has('to'):
-		var start = current_value if is_backwards_animation else from
+		var start = from
 
-		to = maybe_calculate_value(animation_data.to, animation_data)
+		#
+		# Translations created via keyframes behave slighly different from
+		# using `anima_position_relative`.
+		# Because keyframes-translations are relative to the node initial position,
+		# while anima_position_relative are relative to the previous "position"
+		#
+		if relative and animation_data.has("_is_translation") and node.has_meta(meta_key):
+			start = node.get_meta(meta_key)
+
+		to = calculate_dynamic_value(animation_data.to, animation_data)
 		to = _maybe_convert_from_deg_to_rad(node, animation_data, to)
 		to = _maybe_calculate_relative_value(relative, to, start)
 	else:
 		to = current_value
 
+	if relative:
+		node.set_meta(meta_key_last_relative_position, to)
+
 	var pivot = animation_data.pivot if animation_data.has("pivot") else ANIMA.PIVOT.CENTER
 	if not node is Node3D and not node is CanvasModulate:
 		AnimaNodesProperties.set_2D_pivot(animation_data.node, pivot)
 
-	var s = -1.0 if is_backwards_animation and relative else 1.0
-
 	if from is Vector2 and to is Vector3:
 		to = Vector2(to.x, to.y)
 
-	if animation_data.has("__debug") and (animation_data.__debug == "true" or animation_data.__debug == animation_data.property):
-		print("")
-		printt("Node Name:", animation_data.node.name, ", property: ", animation_data.property, ", from: ", from, ", to: ", to, ", current_value: ", current_value)
+	if animation_data.has("__debug"):
+		print("calculate_from_and_to")
+		printt("", "Node Name:", animation_data.node.name, "property", animation_data.property, "from", from, "to", to, "current_value", current_value)
 		printt("", animation_data)
 
 	if typeof(to) == TYPE_RECT2:
@@ -50,11 +82,12 @@ static func calculate_from_and_to(animation_data: Dictionary, is_backwards_anima
 
 	return {
 		from = from,
-		diff = (to - from) * s
+		diff = to - from
 	}
 
-static func maybe_calculate_value(value, animation_data: Dictionary):
-	if (not value is String and not value is Array) or (value is String and value.find(':') < 0):
+static func calculate_dynamic_value(value, animation_data: Dictionary):
+	var should_ignore = (not value is String and not value is Array) or (value is String and value.find(':') < 0)
+	if should_ignore:
 		return value
 
 	var values_to_check: Array
@@ -65,7 +98,7 @@ static func maybe_calculate_value(value, animation_data: Dictionary):
 		values_to_check = value
 
 	var regex := RegEx.new()
-	regex.compile("([\\w\\/.:]+[a-zA-Z]*:[a-z]*:?[a-z_]*)")
+	regex.compile("([\\.:\\/]*[a-zA-Z]*:[a-z]*:?[^\\s]+)")
 
 	var all_results := []
 	var root = animation_data.node
@@ -73,11 +106,11 @@ static func maybe_calculate_value(value, animation_data: Dictionary):
 	if animation_data.has("_root_node"):
 		root = animation_data._root_node
 
-	for single_value in values_to_check:
-		if single_value == "":
-			single_value = "0.0"
+	for single_formula in values_to_check:
+		if single_formula == "":
+			single_formula = "0.0"
 
-		var results := regex.search_all(single_value)
+		var results := regex.search_all(single_formula)
 		var variables := []
 		var values := []
 
@@ -89,30 +122,31 @@ static func maybe_calculate_value(value, animation_data: Dictionary):
 			var source = info.pop_front()
 			var source_node: Node
 
+			
 			if source == '' or source == '.':
 				source_node = animation_data.node
 			else:
 				source_node = root.get_node(source)
 
 			if source_node == null:
-				printerr("Node not found: ", source)
+				printerr("Node not found: ", source, info)
 
 				return value
 
-			var property: String = ":".join(info)
+			var property: String = ":".join(PackedStringArray(info))
 
 			var property_value = AnimaNodesProperties.get_property_value(source_node, animation_data, property)
-
 			var variable := char(65 + index)
 
 			variables.push_back(variable)
 			values.push_back(property_value)
 
-			single_value.erase(rm.get_start(), rm.get_end() - rm.get_start())
-			single_value = single_value.insert(rm.get_start(), variable)
+#			single_formula.erase(rm.get_start(), rm.get_end() - rm.get_start())
+#			single_formula = single_formula.insert(rm.get_start(), variable)
+			single_formula = "%s%s%s" % [single_formula.substr(0, rm.get_start()), variable, single_formula.substr(rm.get_end())]
 
 		var expression := Expression.new()
-		expression.parse(single_value, variables)
+		expression.parse(single_formula, variables)
 
 		var result = expression.execute(values)
 
@@ -153,64 +187,6 @@ static func _maybe_convert_from_deg_to_rad(node: Node, animation_data: Dictionar
 		return value
 
 	if value is Vector3:
-		return Vector3(deg2rad(value.x), deg2rad(value.y), deg2rad(value.z))
+		return Vector3(deg_to_rad(value.x), deg_to_rad(value.y), deg_to_rad(value.z))
 
-	return deg2rad(value)
-
-#
-# Flattens a possible key of percentages, example:
-#
-#  [0, 10, 20] => {...}
-#
-# becomes
-#
-# 0: {...},
-# 10: {...},
-# 20: {...},
-#
-# also replaces "from" with "0" and "to" with "100"
-#
-static func flatten_keyframes_data(data: Dictionary) -> Dictionary:
-	var result := {}
-
-	for key in data:
-		var is_dictionary = data.has(key) and data[key] is Dictionary
-		var value: Dictionary = data[key].duplicate() if is_dictionary else {}
-
-		if not key is Array:
-			key = [key]
-
-		for percentage in key:
-			if percentage is String:
-				if percentage == "from":
-					percentage = "0"
-				elif percentage == "to":
-					percentage = "100"
-
-			if not result.has(percentage):
-				result[percentage] = {}
-
-			for k in value:
-				result[percentage][k] = value[k]
-
-	var frame_keys := []
-	
-	for key in result.keys():
-		if key is String:
-			continue
-
-		frame_keys.push_back(key)
-
-	frame_keys.sort()
-
-	# The 1st frame must have all the key set. If not the current value will be "forced"
-	var keys_to_insert := {}
-	for index in range(1, frame_keys.size()):
-		var frame_key = frame_keys[index]
-
-		for key in result[frame_key]:
-			if key != "easing" and not result[frame_keys[0]].has(key) and not keys_to_insert.has(key):
-				keys_to_insert[key] = "__current_value__"
-				result[frame_keys[0]][key] = null
-
-	return result
+	return deg_to_rad(value)

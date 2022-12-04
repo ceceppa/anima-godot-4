@@ -32,11 +32,11 @@ func _create_relative_declaration_with_easing(data: Dictionary) -> AnimaDeclarat
 
 	return c._init_me(_data)
 
-func anima_animation(animation: String, duration = null, ignore_initial_values := false) -> AnimaDeclarationForAnimation:
-	return _create_declaration_for_animation({ animation = animation, duration = duration, _ignore_initial_values = ignore_initial_values })
+func anima_animation(animation: String, duration = null) -> AnimaDeclarationForAnimation:
+	return _create_declaration_for_animation({ animation = animation, duration = duration })
 
-func anima_animation_frames(frames: Dictionary, duration = null, ignore_initial_values := false) -> AnimaDeclarationForAnimation:
-	return _create_declaration_for_animation({ animation = frames, duration = duration, _ignore_initial_values = ignore_initial_values })
+func anima_animation_frames(frames: Dictionary, duration = null) -> AnimaDeclarationForAnimation:
+	return _create_declaration_for_animation({ animation = frames, duration = duration })
 
 func anima_property(property: String, final_value = null, duration = null) -> AnimaDeclarationForProperty:
 	return _create_declaration_with_easing({ property = property, to = final_value, duration = duration })
@@ -107,17 +107,20 @@ func anima_size_y(size: float, duration = null) -> AnimaDeclarationForProperty:
 func anima_size_z(size: float, duration = null) -> AnimaDeclarationForProperty:
 	return _create_declaration_with_easing({ property = "size:z", to = size, duration = duration })
 
-func anima_rotate(rotate: float, duration = null) -> AnimaDeclarationForProperty:
-	return _create_declaration_with_easing({ property = "rotate", to = rotate, duration = duration })
+func anima_rotate(rotate: float, pivot: int = ANIMA.PIVOT.CENTER, duration = null) -> AnimaDeclarationForProperty:
+	return _create_declaration_with_easing({ property = "rotate", to = rotate, duration = duration, pivot = pivot })
 
 func anima_rotate3D(rotate: Vector3, duration = null) -> AnimaDeclarationForProperty:
 	return _create_declaration_with_easing({ property = "rotation", to = rotate, duration = duration })
 
-func anima_rotate_x(x: float, duration = null) -> AnimaDeclarationForProperty:
-	return _create_declaration_with_easing({ property = "rotation:x", to = x, duration = duration })
+func anima_rotate_x(x: float, pivot: int, duration = null) -> AnimaDeclarationForProperty:
+	return _create_declaration_with_easing({ property = "rotation:x", to = x, duration = duration, pivot = pivot })
 
-func anima_rotate_y(y: float, duration = null) -> AnimaDeclarationForProperty:
-	return _create_declaration_with_easing({ property = "rotation:y", to = y, duration = duration })
+func anima_rotate_y(y: float, pivot: int, duration = null) -> AnimaDeclarationForProperty:
+	return _create_declaration_with_easing({ property = "rotation:y", to = y, duration = duration, pivot = pivot })
 
-func anima_rotate_z(z: float, duration = null) -> AnimaDeclarationForProperty:
-	return _create_declaration_with_easing({ property = "rotation:z", to = z, duration = duration })
+func anima_rotate_z(z: float, pivot: int, duration = null) -> AnimaDeclarationForProperty:
+	return _create_declaration_with_easing({ property = "rotation:z", to = z, duration = duration, pivot = pivot })
+
+func anima_shader_param(param_name: String, to_value, duration = null) -> AnimaDeclarationForProperty:
+	return _create_declaration_with_easing({ property = "shader_param:" + param_name, to = to_value, duration = duration })

@@ -90,6 +90,22 @@ static func get_easing_points(easing_name):
 	if mapping.has(easing_name):
 		return mapping[easing_name]
 
+	if easing_name is String and easing_name.find("spring") >= 0:
+		var params: Array = easing_name.replace("spring", "").replace("(", "").replace(")", "").split(",")
+
+		var mass = params[0]
+		if mass == null or mass == "":
+			mass = 1.0
+
+		var spring_params := {
+			fn = "__spring",
+			mass = float(mass),
+			stiffness = float(params[1]) if params.size() >= 2 else 100.0,
+			damping = float(params[2]) if params.size() >= 3 else 10.0,
+			velocity = float(params[3]) if params.size() >= 4 else 0.0,
+		}
+
+		return spring_params
 	printerr('Easing not found: ' + str(easing_name))
 
 	return mapping[EASING.LINEAR]
@@ -146,3 +162,22 @@ static func ease_in_out_bounce(elapsed: float) -> float:
 		return (1 - ease_out_bounce(1 - 2 * elapsed)) / 2
 
 	return (1 + ease_out_bounce(2 * elapsed - 1)) / 2
+
+static func spring(t: float, params: Dictionary):
+	var progress = t
+	var w0 = sqrt(params.stiffness / params.mass);
+	var velocity =  0 #minMax(is.und(params[3]) ? 0 : params[3], .1, 100);
+	var zeta = params.damping / (2 * sqrt(params.stiffness * params.mass))
+	var wd = w0 * sqrt(1 - zeta * zeta) if zeta < 1 else 0.0
+	var a = 1.0
+	var b = (zeta * w0 + -velocity) / wd if zeta < 1  else -velocity + w0
+
+	if zeta < 1:
+		progress = exp(-progress * zeta * w0) * (a * cos(wd * progress) + b * sin(wd * progress))
+	else:
+		progress = (a + b * progress) * exp(-progress * w0)
+
+	if t == 0 || t == 1:
+		return t
+
+	return 1 - progress

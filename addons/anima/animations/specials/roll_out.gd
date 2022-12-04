@@ -6,7 +6,7 @@ var KEYFRAMES := {
 	},
 	100: {
 		opacity = 0,
-		x = ":size:x",
+		"translate:x": ":size:x",
 		rotation = 120
 	}
 }

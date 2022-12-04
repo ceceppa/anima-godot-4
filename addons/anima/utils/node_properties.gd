@@ -2,7 +2,7 @@
 # Different node types have different property names
 #
 # Example:
-#   Control: position is "rect_position"
+#   Control: position is "position"
 #   Node2D : position is "offset"
 #
 # So, this utility class helps the animations to figure out which
@@ -31,16 +31,11 @@ static func get_size(node: Node) -> Vector2:
 
 static func get_scale(node: Node) -> Vector2:
 	if node is Control:
-		return node.rect_scale
+		return node.scale
 	
 	return node.scale
 
 static func get_rotation(node: Node):
-	if node is Control:
-		return node.rotation
-	elif node is Node2D:
-		return node.rotation_degrees
-
 	return node.rotation
 
 static func set_2D_pivot(node: Node, pivot: int) -> void:
@@ -91,7 +86,8 @@ static func set_2D_pivot(node: Node, pivot: int) -> void:
 				node.offset = Vector2(-size.x / 2, size.y / 2)
 				node.global_position = position - node.offset
 		_:
-			printerr('Pivot point not handled yet')
+			pass
+#			printerr('Pivot point not handled yet')
 
 static func get_property_value(node: Node, animation_data: Dictionary, property = null):
 	if property == null:
@@ -128,14 +124,14 @@ static func get_property_value(node: Node, animation_data: Dictionary, property 
 			return get_rotation(node).z
 		"opacity":
 			if node is MeshInstance3D:
-				var material = node.get_surface_material(0)
+				var material = node.get_surface_override_material(0)
 
 				if material == null:
 					return 0.0
-				elif material is Material:
+				elif material is StandardMaterial3D:
 					return material.albedo_color.a
 				else:
-					return material.get_shader_param("opacity")
+					return material.get_shader_parameter("opacity")
 
 			return node.modulate.a
 		"skew":
@@ -152,9 +148,11 @@ static func get_property_value(node: Node, animation_data: Dictionary, property 
 			return get_size(node).y
 		"text:visible_characters":
 			var hack = UseTRFromStaticMethod.new()
-			var translated_text = hack.get_translation(node.text)
+			var translated_text = hack.get_position(node.text)
 
 			return translated_text.replace(" ", "").length()
+		"index":
+			return node.get_index()
 
 	var p = property.split(':')
 
@@ -181,10 +179,7 @@ static func get_property_value(node: Node, animation_data: Dictionary, property 
 		else:
 			material = node.material
 
-		if material:
-			return material.get_shader_param(p[1])
-
-		return Vector3.ZERO
+		return material.get_shader_parameter(p[1])
 
 	if node_property_name:
 		if subkey:
@@ -243,11 +238,23 @@ static func map_property_to_godot_property(node: Node, property: String) -> Dict
 				subkey = "y"
 			}
 		"width":
+			if node is Control:
+				return {
+					property = "size",
+					key = "x",
+				}
+
 			return {
 				property = "size",
 				key = "x",
 			}
 		"height":
+			if node is Control:
+				return {
+					property = "size",
+					key = "y",
+				}
+
 			return {
 				property = "size",
 				key = "y",
@@ -273,11 +280,11 @@ static func map_property_to_godot_property(node: Node, property: String) -> Dict
 			}
 		"opacity":
 			if node is MeshInstance3D:
-				var material = node.get_surface_material(0)
+				var material = node.get_surface_override_material(0)
 
 				if material == null:
 					return {}
-				elif material is Material:
+				elif material is StandardMaterial3D:
 					return {
 						property = material,
 						key = "albedo_color",
@@ -285,7 +292,7 @@ static func map_property_to_godot_property(node: Node, property: String) -> Dict
 					}
 
 				return {
-					callback = Callable(material, 'set_shader_param'),
+					callback = Callable(material, 'set_shader_parameter'),
 					param = "opacity"
 				}
 			return {
@@ -296,7 +303,7 @@ static func map_property_to_godot_property(node: Node, property: String) -> Dict
 			var property_name = "rotation"
 
 			if node is Control:
-				property_name = "rect_rotation"
+				property_name = "rotation"
 			elif node is Node2D:
 				property_name = "rotation_degrees"
 
@@ -313,7 +320,7 @@ static func map_property_to_godot_property(node: Node, property: String) -> Dict
 
 			if node is Control:
 				return {
-					property = "rect_rotation"
+					property = "rotation"
 				}
 			elif node is Node2D:
 				return {
@@ -373,7 +380,8 @@ static func map_property_to_godot_property(node: Node, property: String) -> Dict
 			material = node.material
 
 		return {
-			callback = Callable(material, 'set_shader_param'),
+			property = "shader_param",
+			callback = Callable(material, 'set_shader_parameter'),
 			param = p[1]
 		}
 
@@ -422,5 +430,5 @@ static func map_property_to_godot_property(node: Node, property: String) -> Dict
 # Allow calling "tr" from a static function
 #
 class UseTRFromStaticMethod:
-	func get_translation(key) -> String:
+	func get_position(key) -> String:
 		return tr(key)

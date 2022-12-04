@@ -1,0 +1,24 @@
+[gd_scene load_steps=2 format=3 uid="uid://b0n4ipyle1o1l"]
+
+[ext_resource type="Script" path="res://addons/anima/visual-editor/shared/AnimaButton.gd" id="1"]
+
+[node name="Button" type="Button"]
+offset_right = 48.0
+pivot_offset = Vector2(24, 16.5)
+mouse_default_cursor_shape = 2
+script = ExtResource("1")
+
+[node name="Label" type="Label" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 1
+vertical_alignment = 1
+
+[connection signal="button_down" from="." to="." method="_on_Button_button_down"]
+[connection signal="button_up" from="." to="." method="_on_Button_button_up"]
+[connection signal="toggled" from="." to="." method="_on_Button_toggled"]

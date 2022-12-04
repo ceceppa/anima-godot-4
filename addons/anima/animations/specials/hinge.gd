@@ -10,7 +10,7 @@ var KEYFRAMES := {
 		opacity = 1,
 	},
 	100: {
-		y = 700,
+		"translate:y": 700,
 		opacity = 0
 	},
 	easing = ANIMA.EASING.EASE_IN_OUT,
