@@ -50,10 +50,10 @@ func _setup_list() -> void:
 
 		var button := Button.new()
 		button.set_text(file.replace('_', ' ').capitalize())
-		button.set_text_alignment(Button.ALIGN_LEFT)
+		button.set_text_alignment(HORIZONTAL_ALIGNMENT_LEFT)
 		button.set_meta('script', file)
 		button.toggle_mode = true
-		button.group = group
+		button.button_group = group
 		button.connect("pressed",Callable(self,'_on_animation_button_pressed').bind(button))
 
 		_list_container.add_child(button)
@@ -110,10 +110,10 @@ func _play_animation(node1: Node, node2: Node, animation_name: String) -> void:
 	$AnimaNode.then(
 		Anima.Node(node1).anima_animation(animation_name, 0.5)
 	)\
-	super.with(
-		Anima.Node(node2).anima_animation(animation_name, 0.5)
-	)\
-	super.play()
+		.with(
+			Anima.Node(node2).anima_animation(animation_name, 0.5)
+		)\
+		.play()
 
 	await $AnimaNode.animation_completed
 
