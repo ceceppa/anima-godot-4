@@ -88,7 +88,7 @@ enum APPLY_INITIAL_VALUES {
 	ON_PLAY
 }
 
-var EASING = AnimaEasing.EASING
+const EASING = AnimaEasing.EASING
 
 const DEFAULT_DURATION := 0.7
 const DEFAULT_ITEMS_DELAY := 0.05
