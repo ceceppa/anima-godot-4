@@ -39,10 +39,16 @@ func anima_initial_value(initial_value):
 
 func anima_on_started(target: Callable, on_started_value = null, on_backwards_completed_value = null):
 	if typeof(on_started_value) != TYPE_ARRAY:
-		on_started_value = [on_started_value]
+		if on_started_value == null:
+			on_started_value = []
+		else:
+			on_started_value = [on_started_value]
 
 	if typeof(on_backwards_completed_value) != TYPE_ARRAY:
-		on_backwards_completed_value = [on_backwards_completed_value]
+		if on_backwards_completed_value == null:
+			on_backwards_completed_value = []
+		else:
+			on_backwards_completed_value = [on_backwards_completed_value]
 
 	_data.on_started = { 
 		target = target,
@@ -61,3 +67,32 @@ func debug(what = "---"):
 	_data.__debug = what
 
 	return self
+
+
+func __get_source():
+	if _data.has("node"):
+		return _data.node
+	elif _data.has("grid"):
+		return _data.grid
+	elif _data.has("group"):
+		return _data.group
+	
+	return null
+
+func play():
+	Anima.begin_single_shot(__get_source()).then(_data).play()
+
+func play_with_delay(delay: float):
+	Anima.begin_single_shot(__get_source()).then(_data).play_with_delay(delay)
+
+func play_with_speed(speed: float):
+	Anima.begin_single_shot(__get_source()).then(_data).play_with_speed(speed)
+
+func play_backwards():
+	Anima.begin_single_shot(__get_source()).then(_data).play_backwards()
+
+func play_backwards_with_delay(delay: float):
+	Anima.begin_single_shot(__get_source()).then(_data).play_backwards_with_delay(delay)
+
+func play_backwards_with_speed(speed: float):
+	Anima.begin_single_shot(__get_source()).then(_data).play_backwards_with_speed(speed)
