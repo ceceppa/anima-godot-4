@@ -5,7 +5,7 @@ extends Node
 
 signal animation_completed
 
-const VISIBILITY_STRATEGY_META_KEY = "__visibility_strategy"
+const VISIBILITY_STRATEGY_META_KEY = "__anima_visibility_strategy"
 
 var PROPERTIES_TO_ATTENUATE = ["rotate", "rotation", "rotation:y", "rotate:y", "y", "position:y", "x"]
 
@@ -19,12 +19,16 @@ var _should_apply_initial_values := true
 var _initial_values := []
 var is_playing_backwards := false
 var _tween: Tween
+var _children_to_remove := []
 
 enum PLAY_MODE {
 	NORMAL,
 	BACKWARDS,
 	LOOP_IN_CIRCLE
 }
+
+func _init(new_name: String = "AnimaTween"):
+	name = new_name
 
 func _enter_tree():
 	var tree: SceneTree = get_tree()
@@ -35,8 +39,8 @@ func _enter_tree():
 		_tween.set_parallel(true)
 		_tween.pause()
 
-		_tween.connect("loop_finished", _on_tween_completed)
-		_tween.connect("finished", _on_tween_completed)
+		_tween.loop_finished.connect(_on_tween_completed)
+		_tween.finished.connect(_on_tween_completed)
 
 func _exit_tree():
 	for child in get_children():
@@ -78,7 +82,7 @@ func do_apply_initial_values() -> void:
 func set_apply_initial_values(when) -> void:
 	_apply_initial_values_on = when
 
-func add_animation_data(animation_data: Dictionary, play_mode := PLAY_MODE.NORMAL) -> void:
+func add_animation_data(animation_data: Dictionary) -> void:
 	var index: String
 
 	_animation_data.push_back(animation_data)
@@ -122,6 +126,14 @@ func add_animation_data(animation_data: Dictionary, play_mode := PLAY_MODE.NORMA
 	else:
 		property_data = AnimaNodesProperties.map_property_to_godot_property(node, animation_data.property)
 
+	var meta_value: Dictionary = animation_data.node.get_meta(ANIMA._INITIAL_STATE_META_KEY) if animation_data.node.has_meta(ANIMA._INITIAL_STATE_META_KEY) else {}
+
+	if not meta_value.has(animation_data.property):
+		property_data._initial_value = AnimaNodesProperties.get_property_value(animation_data.node, animation_data, animation_data.property)
+		meta_value[animation_data.property] = property_data
+
+		animation_data.node.set_meta(ANIMA._INITIAL_STATE_META_KEY, meta_value)
+
 	if not property_data.has("property") and not property_data.has("callback"):
 #		printerr("property/callback missing or not recognised for the animation: ", animation_data.property)
 		return
@@ -160,6 +172,13 @@ func add_animation_data(animation_data: Dictionary, play_mode := PLAY_MODE.NORMA
 		Tween.TRANS_LINEAR,
 		animation_data._wait_time
 	)
+	
+	
+	if animation_data.has("on_started"):
+		_add_event_frame(animation_data, "on_started", animation_data._wait_time)
+
+	if animation_data.has("on_completed"):
+		_add_event_frame(animation_data, "on_completed", animation_data._wait_time + animation_data.duration)
 
 	if not node.is_connected("tree_exiting",Callable(self,"_on_node_tree_exiting")):
 		node.connect("tree_exiting",Callable(self,"_on_node_tree_exiting").bind(object))
@@ -179,7 +198,7 @@ func _interpolate_method(source: Node, method: String, duration: float, tween_in
 	
 	add_child(source)
 
-func add_event_frame(animation_data: Dictionary, callback_key: String, delay: float) -> void:
+func _add_event_frame(animation_data: Dictionary, callback_key: String, delay: float) -> void:
 	if animation_data.has("__debug"):
 		printt("add_event_frame", animation_data)
 
@@ -271,7 +290,7 @@ func stop() -> void:
 func clear_animations() -> void:
 	_tween.stop()
 	_tween.kill()
-	
+
 	if is_inside_tree():
 		_enter_tree()
 
@@ -280,15 +299,11 @@ func clear_animations() -> void:
 
 	_callbacks = {}
 	_animation_data.clear()
+	_initial_values.clear()
 
 func set_visibility_strategy(strategy: int) -> void:
 	for animation_data in _animation_data:
 		_apply_visibility_strategy(animation_data, strategy)
-
-func seek(value: float) -> void:
-#	_tween.custom_step(value)
-#	_tween.seek(value)
-	pass
 
 func _apply_visibility_strategy(animation_data: Dictionary, strategy: int = ANIMA.VISIBILITY.IGNORE):
 	if not animation_data.has('_is_first_frame') or not animation_data._is_first_frame:
@@ -380,7 +395,7 @@ func _maybe_adjust_modulate_value(animation_data: Dictionary, value):
 func _on_tween_completed(_ignore = null) -> void:
 	_tween.stop()
 
-	emit_signal("animation_completed")
+	animation_completed.emit()
 
 func _on_node_tree_exiting(anima_item: Node) -> void:
 	anima_item.free()
@@ -591,7 +606,7 @@ class AnimaEvent extends Node:
 		_is_playing_backwards = is_playing_backwards
 
 	func execute_callback():
-		var fn: Callable
+		var fn
 		var args: Array = []
 
 		if _callback is Array:
@@ -610,32 +625,21 @@ class AnimaEvent extends Node:
 		else:
 			fn = _callback
 
-		fn.callv(args)
+		if fn:
+			fn.callv(args)
 
-func reverse_animation(from_tween, default_duration: float):
-	var animation_data = from_tween.get_animation_data()
-	var animation_length = from_tween.get_duration()
-
-	clear_animations()
-
-	var data: Array = _flip_animations(animation_data.duplicate(true), animation_length, default_duration)
+func reverse_animation(tween: AnimaTween, animation_length: float, overridden_default_duration: float):
+	var data: Array = _flip_animations(tween.get_animation_data().duplicate(true), animation_length, overridden_default_duration)
 
 	for new_data in data:
-		if new_data.has("on_started"):
-			add_event_frame(new_data, "on_started", animation_data._wait_time + animation_data.duration)
-
-		add_animation_data(new_data, PLAY_MODE.BACKWARDS)
-
-		if new_data.has("on_completed"):
-			add_event_frame(new_data, "on_completed", animation_data._wait_time)
+		add_animation_data(new_data)
 
 #
-# In order to flip "nested relative" animations we need to calculate what all the
-# property as it would be if the animation is played normally. Only then we can calculate
-# the correct relative positions, by also looking at the previous frames.
+# In order to flip nested relative animations we need to calculate the final value it would
+# have if played forwards. Then we can calculate the correct relative positions, by also looking at the previous frames.
 # Otherwise we would end up with broken animations when animating the same property more than
 # once
-func _flip_animations(data: Array, animation_length: float, default_duration: float) -> Array:
+func _flip_animations(data: Array, animation_length: float, overridden_default_duration: float) -> Array:
 	var new_data := []
 	var previous_frames := {}
 	var length: float = animation_length
@@ -647,7 +651,7 @@ func _flip_animations(data: Array, animation_length: float, default_duration: fl
 
 		var animation_data = animation.duplicate(true)
 
-		var duration: float = float(animation_data.duration) if animation_data.has('duration') else default_duration
+		var duration: float = float(animation_data.duration) if animation_data.has('duration') else overridden_default_duration
 		var wait_time: float = animation_data._wait_time
 		var node = animation_data.node
 		var new_wait_time: float = length - duration - wait_time
@@ -660,13 +664,15 @@ func _flip_animations(data: Array, animation_length: float, default_duration: fl
 		if animation_data.has("initial_values"):
 			animation_data.erase("initial_values")
 
-		if not is_relative:
-			var temp = animation_data.to
+		var temp = animation_data.to
+		var meta_key: String = "__initial_" + node.name + "_" + str(animation_data.property) 
 
-			if animation_data.has("from"):
-				animation_data.to = animation_data.from
+		if animation_data.has("from"):
+			animation_data.to = animation_data.from
+		elif node.has_meta(meta_key):
+			animation_data.to = node.get_meta(meta_key)
 
-			animation_data.from = temp
+		animation_data.from = temp
 
 		animation_data._wait_time = max(ANIMA.MINIMUM_DURATION, new_wait_time)
 

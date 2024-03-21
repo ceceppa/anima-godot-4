@@ -2,6 +2,16 @@ extends Object
 class_name AnimaDeclarationBase
 
 var _data := {}
+var _is_single_shot := true
+
+enum PlayAction {
+	PLAY,
+	PLAY_WITH_DELAY,
+	PLAY_WITH_SPEED,
+	PLAY_BACKWARDS,
+	PLAY_BACKWARDS_WITH_DELAY,
+	PLAY_BACKWARDS_WITH_SPEED,
+}
 
 func get_data() -> Dictionary:
 	return _data
@@ -63,11 +73,15 @@ func anima_on_completed(target: Callable, on_completed_value = null, on_backward
 		backwards_value = on_backwards_completed_value
 	}
 
+func as_reusable():
+	_is_single_shot = false
+	
+	return self
+
 func debug(what = "---"):
 	_data.__debug = what
 
 	return self
-
 
 func __get_source():
 	if _data.has("node"):
@@ -79,20 +93,40 @@ func __get_source():
 	
 	return null
 
-func play():
-	Anima.begin_single_shot(__get_source()).then(_data).play()
+func _do_play(action: PlayAction, param = null) -> AnimaNode:
+	var anima := Anima.begin(__get_source()).then(_data)
+	anima.set_single_shot(_is_single_shot)
 
-func play_with_delay(delay: float):
-	Anima.begin_single_shot(__get_source()).then(_data).play_with_delay(delay)
+	match action:
+		PlayAction.PLAY:
+			anima.play()
+		PlayAction.PLAY_WITH_DELAY:
+			anima.play_with_delay(param)
+		PlayAction.PLAY_WITH_SPEED:
+			anima.play_with_speed(param)
+		PlayAction.PLAY_BACKWARDS:
+			anima.play_backwards()
+		PlayAction.PLAY_BACKWARDS_WITH_DELAY:
+			anima.play_backwards_with_delay(param)
+		PlayAction.PLAY_BACKWARDS_WITH_SPEED:
+			anima.play_backwards_with_speed(param)
 
-func play_with_speed(speed: float):
-	Anima.begin_single_shot(__get_source()).then(_data).play_with_speed(speed)
+	return anima
 
-func play_backwards():
-	Anima.begin_single_shot(__get_source()).then(_data).play_backwards()
+func play() -> AnimaNode:
+	return _do_play(PlayAction.PLAY)
 
-func play_backwards_with_delay(delay: float):
-	Anima.begin_single_shot(__get_source()).then(_data).play_backwards_with_delay(delay)
+func play_with_delay(delay: float) -> AnimaNode:
+	return _do_play(PlayAction.PLAY_WITH_DELAY, delay)
 
-func play_backwards_with_speed(speed: float):
-	Anima.begin_single_shot(__get_source()).then(_data).play_backwards_with_speed(speed)
+func play_with_speed(speed: float) -> AnimaNode:
+	return _do_play(PlayAction.PLAY_BACKWARDS_WITH_SPEED, speed)
+
+func play_backwards() -> AnimaNode:
+	return _do_play(PlayAction.PLAY_BACKWARDS)
+
+func play_backwards_with_delay(delay: float) -> AnimaNode:
+	return _do_play(PlayAction.PLAY_BACKWARDS_WITH_DELAY, delay)
+
+func play_backwards_with_speed(speed: float) -> AnimaNode:
+	return _do_play(PlayAction.PLAY_BACKWARDS_WITH_SPEED, speed)

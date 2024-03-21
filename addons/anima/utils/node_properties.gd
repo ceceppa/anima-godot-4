@@ -10,6 +10,8 @@
 #
 class_name AnimaNodesProperties
 
+const ANIMA_PIVOT_APPLIED_META = "__anima_pivot_applied"
+
 static func get_position(node: Node):
 	if node is Control or node is Window:
 		return node.position
@@ -41,8 +43,10 @@ static func get_rotation(node: Node):
 static func set_2D_pivot(node: Node, pivot: int) -> void:
 	var size: Vector2 = get_size(node)
 
-	if node is Window:
-		pass
+	if node is Window or node.has_meta(ANIMA_PIVOT_APPLIED_META):
+		return
+
+	node.set_meta(ANIMA_PIVOT_APPLIED_META, true)
 
 	match pivot:
 		ANIMA.PIVOT.TOP_CENTER:
@@ -90,7 +94,6 @@ static func set_2D_pivot(node: Node, pivot: int) -> void:
 				node.global_position = position - node.offset
 		_:
 			pass
-#			printerr('Pivot point not handled yet')
 
 static func get_property_value(node: Node, animation_data: Dictionary, property = null):
 	if property == null:
@@ -174,6 +177,13 @@ static func get_property_value(node: Node, animation_data: Dictionary, property 
 		node_property_name = property_name
 	elif rect_property_name in node:
 		node_property_name = rect_property_name
+	elif property_name == "@viewport_rect":
+		var rect = node.get_viewport_rect()
+		
+		if subkey == "x":
+			return rect.size.x
+		else:
+			return rect.size.y
 
 	if p[0] == 'shader_param':
 		var material: ShaderMaterial
@@ -329,7 +339,7 @@ static func map_property_to_godot_property(node: Node, property: String) -> Dict
 				key = "z"
 			}
 		"skew:x":
-			if not node is Node2D:
+			if not "transform" in node:
 				return {}
 
 			return {

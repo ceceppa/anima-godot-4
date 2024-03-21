@@ -7,10 +7,10 @@ signal animation_completed
 signal loop_started
 signal loop_completed
 
-var _anima_tween := AnimaTween.new()
+var _anima_tween := AnimaTween.new("forward")
+var _anima_reverse_tween := AnimaTween.new("backward")
 
 var _timer := Timer.new()
-var _anima_reverse_tween := AnimaTween.new()
 var _total_animation_length := 0.0
 var _last_animation_duration := 0.0
 
@@ -18,7 +18,7 @@ var _loop_times := 0
 var _loop_count := 0
 var _should_loop := false
 var _play_mode: int = AnimaTween.PLAY_MODE.NORMAL
-var _default_duration = ANIMA.DEFAULT_DURATION
+var _overridden_default_duration = ANIMA.DEFAULT_DURATION
 var _apply_visibility_strategy_on_play := true
 var _play_speed := 1.0
 var _current_play_mode: int = AnimaTween.PLAY_MODE.NORMAL
@@ -49,7 +49,8 @@ func _ready():
 	add_child(_timer)
 
 func init_node(node: Node):
-	_anima_tween.connect("animation_completed",Callable(self,'_on_all_tween_completed'))
+	_anima_tween.animation_completed.connect(_on_all_tween_completed)
+	_anima_reverse_tween.animation_completed.connect(_on_all_tween_completed)
 
 	add_child(_anima_tween)
 	add_child(_anima_reverse_tween)
@@ -84,7 +85,7 @@ func with(data) -> AnimaNode:
 		if _last_animation_duration > 0:
 			data.duration = _last_animation_duration
 		else:
-			data.duration = _default_duration
+			data.duration = _overridden_default_duration
 
 	if not data.has('_wait_time'):
 		data._wait_time = start_time
@@ -207,6 +208,48 @@ func stop() -> AnimaNode:
 
 	return self
 
+func stop_and_reset():
+	stop()
+	reset()
+
+#
+# Reset the initial animated values
+#
+func reset():
+	var animation_data = get_animation_data()
+	var nodes_to_reset: Array[Node]
+	
+	for data in animation_data:
+		var node: Node = data.node
+
+		if not nodes_to_reset.has(node):
+			nodes_to_reset.push_front(node)
+
+	for node in nodes_to_reset:
+		if node.has_meta(ANIMA._INITIAL_STATE_META_KEY):
+			var meta_value: Dictionary = node.get_meta(ANIMA._INITIAL_STATE_META_KEY)
+
+			for key in meta_value:
+				var value = meta_value[key]
+				var initial_value = value._initial_value
+
+				if value.has("subkey"):
+					node[value.property][value.key][value.subkey] = initial_value
+				elif value.has("key"):
+					node[value.property][value.key] = initial_value
+				elif value.has("property"):
+					node[value.property] = initial_value
+
+			node.remove_meta(ANIMA._INITIAL_STATE_META_KEY)
+
+		for meta_key in node.get_meta_list():
+			if meta_key.begins_with("__anima_"):
+				node.remove_meta(meta_key)
+
+func reset_and_clear() -> void:
+	reset()
+	clear()
+
 func loop(times: int = -1) -> AnimaNode:
 	return _do_loop(times, AnimaTween.PLAY_MODE.NORMAL)
 
@@ -291,7 +334,7 @@ func _do_play() -> void:
 		_anima_reverse_tween.is_playing_backwards = true
 
 		if not _anima_reverse_tween.has_data():
-			_anima_reverse_tween.reverse_animation(_anima_tween, _default_duration)
+			_anima_reverse_tween.reverse_animation(_anima_tween, _total_animation_length, _overridden_default_duration)
 
 		tween = _anima_reverse_tween
 	else:
@@ -311,7 +354,7 @@ func _do_play() -> void:
 		_current_play_mode = AnimaTween.PLAY_MODE.NORMAL
 
 func set_default_duration(duration: float) -> AnimaNode:
-	_default_duration = duration
+	_overridden_default_duration = duration
 
 	return self
 
@@ -322,7 +365,7 @@ func set_apply_initial_values(when: int) -> AnimaNode:
 
 func _setup_animation(data: Dictionary) -> float:
 	if not data.has('duration'):
-		data.duration = _default_duration
+		data.duration = _overridden_default_duration
 
 	if not data.has('property') and not data.has("animation"):
 		printerr('Please specify the property to animate or the animation to use!', data)
@@ -350,13 +393,12 @@ func _setup_animation(data: Dictionary) -> float:
 		return 0.0
 
 	var node: Node = data.node
-	var meta_key: String = ""
-
-	if data.has("property"):
-		meta_key = "AnimaInitial%s%s" % [str(node.name).replace("-", "").replace(" ", ""), str(data.property).replace("_", "")]
-
-	if meta_key.length() > 0 and not data.has("from") and data.has("property") and not node.has_meta(meta_key):
-		data.node.set_meta(meta_key, AnimaNodesProperties.get_property_value(node, data, data.property))
+#	var meta_value: Dictionary = data.node.get_meta(INITIAL_STATE_META_KEY) if data.node.has_meta(INITIAL_STATE_META_KEY) else {}
+#
+#	if data.has("property") and not meta_value.has(data.property):
+#		meta_value[data.property] = AnimaNodesProperties.get_property_value(node, data, data.property)
+#
+#		data.node.set_meta(INITIAL_STATE_META_KEY, meta_value)
 
 	return _setup_node_animation(data)
 
@@ -382,9 +424,6 @@ func _setup_node_animation(data: Dictionary) -> float:
 		if are_multiple_nodes:
 			data._wait_time += data.items_delay * node_index
 
-		if data.has("on_started"):
-			_anima_tween.add_event_frame(data, "on_started", data._wait_time)
-
 		if data.has("animation"):
 			var keyframes = data.animation
 
@@ -409,10 +448,6 @@ func _setup_node_animation(data: Dictionary) -> float:
 
 		if are_multiple_nodes:
 			delay += data.items_delay
-
-		if data.has("on_completed"):
-			_has_on_completed = true
-			_anima_tween.add_event_frame(data, "on_completed", data._wait_time + data.duration)
 
 	return duration
 
@@ -720,25 +755,26 @@ func _create_grid_animation_with(nodes: Array, animation_data: Dictionary) -> fl
 	return animation_data.duration + (animation_data.items_delay * nodes.size())
 
 func _maybe_play() -> void:
-	_loop_count -= 1
+	_loop_times -= 1
 
-	if _loop_count > 0 or _should_loop:
+	if _loop_times > 0 or _should_loop:
 		if _loop_delay > 0:
 			await get_tree().create_timer(_loop_delay).timeout
 
 		_do_play()
 
 func _on_all_tween_completed() -> void:
-	emit_signal("animation_completed")
-	emit_signal("loop_completed", _loop_count)
+	if _loop_times <= 1:
+		animation_completed.emit()
+
+	loop_completed.emit(_loop_count)
 
 	if _is_single_shot:
 		queue_free()
 
 		return
 
-	if _should_loop:
-		_maybe_play()
+	_maybe_play()
 
 func _on_backwords_tween_complete(tween: Tween) -> void:
 	tween.queue_free()

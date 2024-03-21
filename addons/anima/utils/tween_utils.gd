@@ -1,5 +1,13 @@
 class_name AnimaTweenUtils
 
+static func get_initial_and_relative_meta_keys(property: String) -> Dictionary:
+	var property_name_for_meta = property.replace(":", "_")
+
+	return {
+		initial = "__anima_initial_relative_value_" + property_name_for_meta,
+		relative = "__anima_last_relative_value_" + property_name_for_meta,
+	}
+
 static func calculate_from_and_to(animation_data: Dictionary) -> Dictionary:
 	var node: Node = animation_data.node
 	var from
@@ -14,11 +22,9 @@ static func calculate_from_and_to(animation_data: Dictionary) -> Dictionary:
 		animation_data.erase('to')
 
 	#
-	# Godot4 doesn't like a meta_key containing the symbol :
+	# Godot4 doesn't like a meta_keys.initial containing the symbol :
 	#
-	var property_name_for_meta = animation_data.property.replace(":", "_")
-	var meta_key = "_initial_relative_value_" + property_name_for_meta
-	var meta_key_last_relative_position = "_last_relative_value_" + property_name_for_meta
+	var meta_keys = get_initial_and_relative_meta_keys(animation_data.property)
 
 	var calculated_from = null
 	
@@ -28,15 +34,16 @@ static func calculate_from_and_to(animation_data: Dictionary) -> Dictionary:
 	from = current_value
 
 	if relative:
-		if not node.has_meta(meta_key_last_relative_position):
-			node.set_meta(meta_key, current_value)
+		if not node.has_meta(meta_keys.relative):
+			node.set_meta(meta_keys.initial, current_value)
 
 			if calculated_from:
 				from += calculated_from
 		else:
-			var previous_end_position = node.get_meta(meta_key_last_relative_position)
+			var previous_end_position = node.get_meta(meta_keys.relative)
 
 			from = previous_end_position
+
 	elif calculated_from != null:
 		from = calculated_from
 
@@ -49,8 +56,8 @@ static func calculate_from_and_to(animation_data: Dictionary) -> Dictionary:
 		# Because keyframes-translations are relative to the node initial position,
 		# while anima_position_relative are relative to the previous "position"
 		#
-		if relative and animation_data.has("_is_translation") and node.has_meta(meta_key):
-			start = node.get_meta(meta_key)
+		if relative and animation_data.has("_is_translation") and node.has_meta(meta_keys.initial):
+			start = node.get_meta(meta_keys.initial)
 
 		to = calculate_dynamic_value(animation_data.to, animation_data)
 		to = _maybe_calculate_relative_value(relative, to, start)
@@ -58,7 +65,7 @@ static func calculate_from_and_to(animation_data: Dictionary) -> Dictionary:
 		to = current_value
 
 	if relative:
-		node.set_meta(meta_key_last_relative_position, to)
+		node.set_meta(meta_keys.relative, to)
 
 	var pivot = animation_data.pivot if animation_data.has("pivot") else ANIMA.PIVOT.CENTER
 	if not node is Node3D and not node is CanvasModulate:
@@ -95,8 +102,8 @@ static func calculate_dynamic_value(value, animation_data: Dictionary):
 	else:
 		values_to_check = value
 
-	var regex := RegEx.new()
-	regex.compile("([\\.:\\/]*[a-zA-Z]*:[a-z]*:?[^\\s]+)")
+	var DYNAMIC_EXTRACTOR_REGEX := RegEx.new()
+	DYNAMIC_EXTRACTOR_REGEX.compile("(@?[\\.:\\/]*[a-zA-Z_]*:[a-z]*:?[^\\s\\)]+)")
 
 	var all_results := []
 	var root = animation_data.node
@@ -108,7 +115,7 @@ static func calculate_dynamic_value(value, animation_data: Dictionary):
 		if single_formula == "":
 			single_formula = "0.0"
 
-		var results := regex.search_all(single_formula)
+		var results := DYNAMIC_EXTRACTOR_REGEX.search_all(single_formula)
 		var variables := []
 		var values := []
 
@@ -116,13 +123,17 @@ static func calculate_dynamic_value(value, animation_data: Dictionary):
 
 		for index in results.size():
 			var rm: RegExMatch = results[index]
-			var info: Array = rm.get_string().split(":")
+			var regex_result = rm.get_string()
+			var info: Array = regex_result.split(":")
 			var source = info.pop_front()
 			var source_node: Node
+			var property: String = ":".join(PackedStringArray(info))
 
-			
 			if source == '' or source == '.':
 				source_node = animation_data.node
+			elif source[0] == '@':
+				source_node = animation_data.node
+				property = regex_result
 			else:
 				source_node = root.get_node(source)
 
@@ -131,16 +142,12 @@ static func calculate_dynamic_value(value, animation_data: Dictionary):
 
 				return value
 
-			var property: String = ":".join(PackedStringArray(info))
-
 			var property_value = AnimaNodesProperties.get_property_value(source_node, animation_data, property)
 			var variable := char(65 + index)
 
 			variables.push_back(variable)
 			values.push_back(property_value)
 
-#			single_formula.erase(rm.get_start(), rm.get_end() - rm.get_start())
-#			single_formula = single_formula.insert(rm.get_start(), variable)
 			single_formula = "%s%s%s" % [single_formula.substr(0, rm.get_start()), variable, single_formula.substr(rm.get_end())]
 
 		var expression := Expression.new()
